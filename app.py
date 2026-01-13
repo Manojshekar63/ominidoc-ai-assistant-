@@ -170,7 +170,7 @@ def fetch_google_docs(url):
         raise ValueError(f"Failed to fetch Google Docs (status {resp.status_code}). Document may not be public.")
     
     # Create a document object similar to other loaders
-    from langchain.schema import Document
+    from langchain_core.documents import Document
     content = resp.text
     return [Document(page_content=content, metadata={"source": url, "type": "google_docs"})]
 
@@ -224,7 +224,7 @@ def fetch_url_documents(url):
         return extract_from_raw_bytes(resp.content, ".pdf")
     if "word" in content_type or "officedocument" in content_type or lowered.endswith(".docx"):  # If DOCX
         return extract_from_raw_bytes(resp.content, ".docx")
-    from langchain.schema import Document  # For plain text
+    from langchain_core.documents import Document  # For plain text
     text = resp.text
     return [Document(page_content=text, metadata={"source": url})]
 
