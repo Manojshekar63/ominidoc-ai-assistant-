@@ -27,6 +27,7 @@ from typing import List  # Type hints
 import json  # For handling JSON data in history
 from datetime import datetime  # For timestamps
 import uuid  # For unique IDs in history
+import time  # For rate limiting
 
 # Set Poppler path - auto-detect OS for cross-platform compatibility
 if platform.system() == "Windows":
@@ -449,6 +450,21 @@ def export_search_history():
     history_json = json.dumps(st.session_state.search_history, ensure_ascii=False, indent=2)  # Dump to JSON
     return history_json.encode('utf-8')  # Return bytes
 
+def check_rate_limit(max_requests=3, period=3600):
+    """
+    Allow max_requests per period (seconds) per user/session.
+    Returns (allowed: bool, wait_time: int)
+    """
+    now = int(time.time())
+    window = now // period
+    key = f"rate_limit_{period}_{window}"
+    count = st.session_state.get(key, 0)
+    if count >= max_requests:
+        wait_time = period - (now % period)
+        return False, wait_time
+    st.session_state[key] = count + 1
+    return True, 0
+
 def main():
     st.title("OmniDoc AI: The Universal Document Intelligence Assistant")  # Set app title
 
@@ -614,6 +630,11 @@ def main():
         final_query = query.strip()  # Strip query
 
         if final_query:  # If query exists
+            # Rate limit: 3 questions per hour per user/session
+            allowed, wait_time = check_rate_limit(max_requests=3, period=3600)
+            if not allowed:
+                st.warning(f"⏳ Rate limit reached. Please wait {wait_time//60} minutes before your next question.")
+                st.stop()
             retrieval_query = final_query  # Init retrieval
             if lang_choice == "Kannada" and llm is not None:  # If Kannada and llm
                 try:
