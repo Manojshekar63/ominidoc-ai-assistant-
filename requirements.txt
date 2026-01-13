@@ -13,3 +13,4 @@ unstructured[pdf]
 docx2txt
 streamlit-mic-recorder
 python-dotenv
+langchain-core
