@@ -1,0 +1,14 @@
+streamlit
+requests
+langchain
+langchain-community
+langchain-huggingface
+langchain-ollama
+pdf2image
+pyttsx3
+comtypes
+streamlit-mic-recorder
+hashlib
+uuid
+datetime
+json

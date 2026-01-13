@@ -1,0 +1,15 @@
+streamlit
+requests
+langchain
+langchain-community
+langchain-text-splitters
+langchain-huggingface
+langchain-groq
+sentence-transformers
+faiss-cpu
+pdf2image
+pillow
+unstructured[pdf]
+docx2txt
+streamlit-mic-recorder
+python-dotenv
