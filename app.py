@@ -1,4 +1,7 @@
-# Import necessary libraries for the app
+# Load environment variables from .env file (add this at the very top, before other imports)
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st  # Streamlit library to build the web interface
 import tempfile  # For creating temporary files during processing
 import os  # For operating system interactions like environment variables
@@ -16,6 +19,7 @@ except ImportError:
 from langchain_huggingface import HuggingFaceEmbeddings  # For generating embeddings
 from langchain_community.vectorstores import FAISS  # Vector store for similarity search
 from langchain_groq import ChatGroq  # Groq Cloud API integration for LLM
+from sentence_transformers import CrossEncoder  # ← ADD THIS LINE
 
 # Voice input support
 from streamlit_mic_recorder import speech_to_text  # For voice input
@@ -293,10 +297,14 @@ def build_prompt(context: str, query: str, style: dict):
     )
 
 def generate_answer_with_style(llm, retriever, query, style, k: int = 8):
-    docs = retriever.invoke(query)  # Retrieve docs
+    docs = retriever.invoke(query)  # Retrieve 8 docs from FAISS (similarity search)
     if not isinstance(docs, list):
         docs = [docs]
-    context = "\n\n".join(d.page_content for d in docs[:k])  # Build context
+    
+    # Re-rank using cross-encoder and select top 4
+    docs = rerank_documents(query, docs, top_k=4)  # ← ADD THIS LINE
+    
+    context = "\n\n".join(d.page_content for d in docs[:4])  # Build context from top 4
     prompt = build_prompt(context, query, style)  # Create prompt
     try:
         resp = llm.invoke(prompt)  # Generate with LLM
@@ -306,22 +314,26 @@ def generate_answer_with_style(llm, retriever, query, style, k: int = 8):
         return generate_answer_from_context_only_with_style(retriever, query, style, k)  # Fallback
 
 def generate_answer_from_context_only_with_style(retriever, query, style, k: int = 8):
-    docs = retriever.invoke(query)  # Retrieve docs
+    docs = retriever.invoke(query)  # Retrieve 8 docs
     if not isinstance(docs, list):
         docs = [docs]
-    context = "\n".join(d.page_content for d in docs[:k])  # Get context
+    
+    # Re-rank using cross-encoder
+    docs = rerank_documents(query, docs, top_k=4)  # ← NEW
+    
+    context = "\n".join(d.page_content for d in docs[:4])  # Get context
     if style.get("points"):  # For points style
         n = style["points"]
         parts = re.split(r"[\n\.;]\s+", context)  # Split into parts
-        items = [p.strip() for p in parts if len(p.strip()) > 0][:max(n, 1)]  # Get items
+        items = [p.strip() for p in parts if len(p.strip()) > 0][:max(n, 1)]
         bullets = items[:n]
-        ans = "\n".join(["- " + b for b in bullets])  # Format bullets
+        ans = "\n".join(["- " + b for b in bullets])
         return ans, docs
     if style.get("brief"):  # For brief style
-        parts = re.split(r"[\n\.;]\s+", context)  # Split
-        short = " ".join(parts[:4])  # Take first parts
-        return short[:600], docs  # Limit length
-    return context[:700], docs  # Default
+        parts = re.split(r"[\n\.;]\s+", context)
+        short = " ".join(parts[:4])
+        return short[:600], docs
+    return context[:700], docs
 
 def cache_key(docs):
     h = hashlib.sha256()  # Create hash object
@@ -465,6 +477,63 @@ def check_rate_limit(max_requests=3, period=3600):
     st.session_state[key] = count + 1
     return True, 0
 
+def log_evaluation_data(query, answer, retrieved_docs):
+    """Log Q&A data for RAGAS evaluation"""
+    eval_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "question": query,
+        "answer": answer,
+        "contexts": [doc.page_content[:500] for doc in retrieved_docs],  # Truncate to 500 chars
+        "model": st.session_state.get("groq_model", "unknown")
+    }
+    
+    # Append to evaluation log
+    try:
+        with open("evaluation_log.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(eval_entry) + "\n")
+    except:
+        pass
+
+def rerank_documents(query, documents, model_name="cross-encoder/ms-marco-MiniLM-L-6-v2", top_k=4):
+    """
+    Re-rank documents using cross-encoder model
+    
+    Args:
+        query: User question
+        documents: List of retrieved documents from FAISS
+        model_name: Cross-encoder model to use
+        top_k: Number of documents to return (usually 4)
+    
+    Returns:
+        List of top_k documents sorted by relevance score
+    """
+    if not documents or len(documents) == 0:
+        return documents
+    
+    try:
+        # Load cross-encoder model (first time: ~200ms, cached: ~10ms)
+        cross_encoder = CrossEncoder(model_name)
+        
+        # Prepare query-document pairs
+        doc_texts = [doc.page_content for doc in documents]
+        
+        # Score each document (query + doc pair)
+        scores = cross_encoder.predict([(query, doc) for doc in doc_texts])
+        
+        # Sort documents by score (highest to lowest)
+        doc_score_pairs = list(zip(documents, scores))
+        doc_score_pairs = sorted(doc_score_pairs, key=lambda x: x[1], reverse=True)
+        
+        # Return top_k documents
+        reranked_docs = [doc_score_pair[0] for doc_score_pair in doc_score_pairs[:top_k]]
+        
+        return reranked_docs
+        
+    except Exception as e:
+        # If cross-encoder fails, return original documents
+        st.warning(f"⚠️ Re-ranking failed: {e}. Using original documents.")
+        return documents[:top_k]
+
 def main():
     st.title("OmniDoc AI: The Universal Document Intelligence Assistant")  # Set app title
 
@@ -605,7 +674,7 @@ def main():
             st.error(f"❌ Groq API initialization failed: {e}")
             st.warning("Answers will be based on document excerpts without AI generation.")
             llm = None
-        retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 4, "fetch_k": 12, "lambda_mult": 0.5})  # Optimized retriever
+        retriever = vectordb.as_retriever(search_type="similarity", search_kwargs={"k": 8})  # Optimized retriever
 
         col1, col2 = st.columns([1, 8])  # Columns for voice
         with col1:
@@ -661,6 +730,7 @@ def main():
 
             # Save to search history
             save_search_history(final_query, answer, lang_choice, len(sources))  # Save
+            log_evaluation_data(final_query, answer, sources)  # Log for RAGAS evaluation
 
             if sources:  # If sources
                 with st.expander("Sources"):  # Expander

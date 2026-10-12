@@ -1,0 +1,2 @@
+user_input,retrieved_contexts,response,reference,faithfulness,answer_relevancy,context_precision
+What storage system does OmniDoc use?,"['OmniDoc AI uses FAISS for vector storage', 'FAISS is an efficient similarity search library']",OmniDoc AI uses FAISS for vector storage,,1.0,0.7313729795084318,0.9999999999

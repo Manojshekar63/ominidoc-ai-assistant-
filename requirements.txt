@@ -5,7 +5,7 @@ langchain-community
 langchain-text-splitters
 langchain-huggingface
 langchain-groq
-sentence-transformers
+sentence-transformers>=2.2.0
 faiss-cpu
 pdf2image
 pillow
@@ -14,3 +14,14 @@ docx2txt
 streamlit-mic-recorder
 python-dotenv
 langchain-core
+langchain-ollama
+chromadb
+rank_bm25
+pdfminer.six
+ragas>=0.1.0
+datasets>=2.14.0
+langchain-groq>=0.1.0
+langchain-huggingface>=0.0.1
+sentence-transformers>=2.2.0
+python-dotenv>=1.0.0
+pandas>=1.5.0
